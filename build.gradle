@@ -1,0 +1,112 @@
+
+import org.apache.commons.io.FilenameUtils
+
+buildscript {
+    repositories {
+        ivy {
+            name "ivyLocal"
+            url "${System.getProperty('user.home')}/.ivy/repo"
+        }
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.mylonelybear:MlbGradlePlugins:latest.integration'
+        classpath 'commons-io:commons-io:2.4'
+    }
+}
+
+ext {
+    buildDir = 'build'
+    baseBuildDir = "$buildDir/base"
+    boxBuildDir = "$buildDir/box"
+    packerBuildDir = "$buildDir/packer"
+
+    srcDir = 'src/main'
+    packerSrcDir = "$srcDir/packer"
+
+    packerSrcFile = "$packerSrcDir/packer.json"
+
+    distDir = 'dist'
+
+    testDir = 'src/test'
+}
+
+def packerCommonSrcDir = file(packerSrcDir)
+def packerCommonSrcFile = file(packerSrcFile)
+
+apply plugin: 'mylonelybear'
+defaultTasks 'dist'
+
+version = 'development'
+
+configurations {
+    base
+    virtualbox
+}
+
+task clean << {
+    delete buildDir
+}
+
+task build() {
+    inputs.dir packerCommonSrcDir
+    inputs.dir packerSrcDir
+    outputs.dir packerBuildDir
+    outputs.dir boxBuildDir
+
+    doLast {
+        copy {
+            from packerCommonSrcDir
+            into packerBuildDir
+        }
+
+        copy {
+            from packerCommonSrcFile
+            into packerBuildDir
+            expand(project: project)
+        }
+
+        copy {
+            from packerSrcDir
+            into packerBuildDir
+        }
+
+        copy {
+            from packerSrcFile
+            into packerBuildDir
+            expand(project: project)
+        }
+
+        delete boxBuildDir
+
+        exec {
+            executable 'packer'
+            args 'build', '-force', "${packerBuildDir}/${file(packerSrcFile).name}"
+        }
+    }
+}
+
+task distVirtualBox(type: Zip, dependsOn: build) {
+    baseName = project.name
+    from boxBuildDir
+    destinationDir = file(distDir)
+}
+
+task dist(dependsOn: distVirtualBox)
+
+artifacts {
+    virtualbox distVirtualBox
+}
+
+publish.dependsOn dist
+
+publishing {
+    publications {
+        ivy (IvyPublication) {
+            artifact(distVirtualBox) {
+                type = 'virtualbox'
+            }
+        }
+    }
+}
+
